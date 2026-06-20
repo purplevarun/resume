@@ -1602,6 +1602,16 @@ export default function PurpleResume() {
         @media print {
           .no-print { display: none !important; }
           body { overflow: visible !important; background: white; }
+          .app-root {
+            height: auto !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+          .body-row {
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+          }
           .preview-shell {
             overflow: visible !important;
             background: none !important;
@@ -1611,8 +1621,6 @@ export default function PurpleResume() {
           #resume-paper {
             box-shadow: none !important;
             border-radius: 0 !important;
-            position: fixed;
-            top: 0; left: 0;
             width: 210mm;
             min-height: 297mm;
           }
@@ -1620,6 +1628,7 @@ export default function PurpleResume() {
       `}</style>
 
 			<div
+				className="app-root"
 				style={{
 					background: C.bg,
 					color: C.textPrimary,
@@ -1741,7 +1750,10 @@ export default function PurpleResume() {
 				</header>
 
 				{/* ════════ BODY ════════ */}
-				<div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+				<div
+					className="body-row"
+					style={{ display: "flex", flex: 1, overflow: "hidden" }}
+				>
 					{/* ── LEFT PANEL ── */}
 					<div
 						className="no-print"
