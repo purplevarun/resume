@@ -168,6 +168,35 @@ const DEFAULT_DATA = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// LOCAL STORAGE PERSISTENCE
+// ═══════════════════════════════════════════════════════════════
+
+const LS_KEY = "purpleresume_data";
+
+function loadFromLocalStorage() {
+	try {
+		const raw = localStorage.getItem(LS_KEY);
+		if (!raw) return DEFAULT_DATA;
+		const parsed = JSON.parse(raw);
+		// Basic shape check so a corrupted/old value doesn't crash the app
+		if (!parsed || !parsed.header || !parsed.sections || !parsed.settings) {
+			return DEFAULT_DATA;
+		}
+		return parsed;
+	} catch {
+		return DEFAULT_DATA;
+	}
+}
+
+function saveToLocalStorage(data) {
+	try {
+		localStorage.setItem(LS_KEY, JSON.stringify(data));
+	} catch {
+		// storage full / unavailable — fail silently
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════
 // INLINE MARKDOWN RENDERER
 // ═══════════════════════════════════════════════════════════════
 
@@ -1458,11 +1487,11 @@ const TABS = [
 ];
 
 export default function PurpleResume() {
-	const [data, setData] = useState(DEFAULT_DATA);
+	const [data, setData] = useState(loadFromLocalStorage);
 	const [editorMode, setEditorMode] = useState("visual"); // "visual" | "json"
 	const [activeTab, setActiveTab] = useState("header");
 	const [jsonText, setJsonText] = useState(() =>
-		JSON.stringify(DEFAULT_DATA, null, 2),
+		JSON.stringify(loadFromLocalStorage(), null, 2),
 	);
 	const [jsonError, setJsonError] = useState(null);
 
@@ -1481,6 +1510,11 @@ export default function PurpleResume() {
 			setJsonText(JSON.stringify(data, null, 2));
 		}
 	}, [data, editorMode]);
+
+	// Persist every change to localStorage
+	useEffect(() => {
+		saveToLocalStorage(data);
+	}, [data]);
 
 	useEffect(() => () => clearTimeout(syncTimer.current), []);
 
