@@ -1,0 +1,52 @@
+// Lightweight formatting for resume content: **bold**, *italic*,
+// [label](url), and bare https:// URLs.
+//
+// Deliberately not full Markdown and never raw HTML — every export stays
+// real, plain text with real <a> tags, nothing an ATS text-extractor could
+// misread and nothing a pasted-in HTML snippet could inject.
+
+const TOKEN_RE =
+	/(\*\*.+?\*\*|\*[^*]+?\*|\[[^\]]+?\]\([^)]+?\)|https?:\/\/[^\s)]+)/g;
+
+export function renderText(text) {
+	if (text === null || text === undefined || text === "") return null;
+	const str = String(text);
+	const parts = str
+		.split(TOKEN_RE)
+		.filter((part) => part !== undefined && part !== "");
+
+	return parts.map((part, i) => {
+		if (/^\*\*.+\*\*$/.test(part)) {
+			return <strong key={i}>{part.slice(2, -2)}</strong>;
+		}
+		if (/^\*[^*]+\*$/.test(part)) {
+			return <em key={i}>{part.slice(1, -1)}</em>;
+		}
+		const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+		if (link) {
+			return (
+				<a key={i} href={link[2]} target="_blank" rel="noreferrer">
+					{link[1]}
+				</a>
+			);
+		}
+		if (/^https?:\/\//.test(part)) {
+			return (
+				<a key={i} href={part} target="_blank" rel="noreferrer">
+					{part}
+				</a>
+			);
+		}
+		return part;
+	});
+}
+
+// Turns a header contact value into a sensible href — mailto for email,
+// tel for phone, https:// for a bare domain like "linkedin.com/in/x".
+export function contactHref(type, value) {
+	if (!value) return null;
+	if (type === "email") return `mailto:${value}`;
+	if (type === "phone") return `tel:${String(value).replace(/[^\d+]/g, "")}`;
+	if (/^https?:\/\//.test(value)) return value;
+	return `https://${value}`;
+}
