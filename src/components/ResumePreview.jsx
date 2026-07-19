@@ -36,8 +36,12 @@ function ResumeHeader({ header, preset }) {
 		<header
 			className={`resume-header resume-header--${preset.headerAlign}`}
 		>
-			{header.name && <h1 className="resume-name">{header.name}</h1>}
-			{header.title && <p className="resume-role">{header.title}</p>}
+			{header.name && (
+				<h1 className="resume-name">{renderText(header.name)}</h1>
+			)}
+			{header.title && (
+				<p className="resume-role">{renderText(header.title)}</p>
+			)}
 			{items.length > 0 && (
 				<p className="resume-contact">
 					{items.map((item, i) => (
@@ -51,10 +55,10 @@ function ResumeHeader({ header, preset }) {
 									target="_blank"
 									rel="noreferrer"
 								>
-									{item.label}
+									{renderText(item.label, { links: false })}
 								</a>
 							) : (
-								item.label
+								renderText(item.label)
 							)}
 						</span>
 					))}
@@ -67,7 +71,7 @@ function ResumeHeader({ header, preset }) {
 function SecTitle({ title, preset }) {
 	return (
 		<h2 className={`resume-heading resume-heading--${preset.headingStyle}`}>
-			{title}
+			{renderText(title)}
 		</h2>
 	);
 }

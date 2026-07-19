@@ -10,7 +10,7 @@ Keep the exact same top-level shape:
 - "sections": an array, any length, any order. Each item has a "title", an optional "type" ("paragraph" or "bullets" — inferred from the content shape if you leave it out), and "content" — either a string (paragraph) or an array where each item is a plain string (a bullet line) or an object like { "left": "...", "right": "..." } (an entry heading, e.g. job title on the left, dates on the right).
 - "settings": preset, fontFamily, fontSize, and four margins — leave these as they are unless I ask otherwise.
 
-You can reorder, add, remove, or rename sections freely. **bold**, *italic*, and [label](url) all work inside any content string. Just don't change the shape itself — that's what the app renders.
+You can reorder, add, remove, or rename sections freely. **bold**, *italic*, and [label](url) all work in visible resume text, including section titles and content strings. Just don't change the shape itself — that's what the app renders.
 
 Return ONLY the JSON. No explanation, no markdown code fences, nothing before or after it.
 

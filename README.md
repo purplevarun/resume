@@ -41,7 +41,7 @@ That's the whole loop. Every field on the page — fonts, presets, margins, sect
 	},
 	"sections": [
 		{
-			"title": "Summary",
+			"title": "**Summary**",
 			"type": "paragraph", // optional — inferred from content's shape if omitted
 			"content": "Plain text. **bold**, *italic*, and [label](url) all work here.",
 		},
@@ -66,7 +66,7 @@ That's the whole loop. Every field on the page — fonts, presets, margins, sect
 }
 ```
 
-Add, remove, reorder, or rename sections however you want — nothing about the array length or order is fixed. Anything the renderer doesn't recognize (extra fields, unexpected values) is ignored rather than breaking the page.
+Add, remove, reorder, or rename sections however you want — nothing about the array length or order is fixed. Markdown-style `**bold**`, `*italic*`, `[label](url)`, and bare `https://` links work in visible resume text, including section titles. Anything the renderer doesn't recognize (extra fields, unexpected values) is ignored rather than breaking the page.
 
 ## Presets
 

@@ -8,8 +8,9 @@
 const TOKEN_RE =
 	/(\*\*.+?\*\*|\*[^*]+?\*|\[[^\]]+?\]\([^)]+?\)|https?:\/\/[^\s)]+)/g;
 
-export function renderText(text) {
+export function renderText(text, options = {}) {
 	if (text === null || text === undefined || text === "") return null;
+	const { links = true } = options;
 	const str = String(text);
 	const parts = str
 		.split(TOKEN_RE)
@@ -24,11 +25,19 @@ export function renderText(text) {
 		}
 		const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
 		if (link) {
+			if (!links) {
+				return (
+					<span key={i}>{renderText(link[1], { links: false })}</span>
+				);
+			}
 			return (
 				<a key={i} href={link[2]} target="_blank" rel="noreferrer">
 					{link[1]}
 				</a>
 			);
+		}
+		if (!links && /^https?:\/\//.test(part)) {
+			return part;
 		}
 		if (/^https?:\/\//.test(part)) {
 			return (
@@ -45,8 +54,25 @@ export function renderText(text) {
 // tel for phone, https:// for a bare domain like "linkedin.com/in/x".
 export function contactHref(type, value) {
 	if (!value) return null;
-	if (type === "email") return `mailto:${value}`;
-	if (type === "phone") return `tel:${String(value).replace(/[^\d+]/g, "")}`;
+	const link = String(value).match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+	if (link) return urlHref(link[2]);
+
+	const plainValue = stripInlineMarkdown(value).trim();
+	if (!plainValue) return null;
+	if (type === "email") return `mailto:${plainValue}`;
+	if (type === "phone")
+		return `tel:${String(plainValue).replace(/[^\d+]/g, "")}`;
+	return urlHref(plainValue);
+}
+
+function urlHref(value) {
 	if (/^https?:\/\//.test(value)) return value;
 	return `https://${value}`;
+}
+
+function stripInlineMarkdown(value) {
+	return String(value)
+		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+		.replace(/\*\*([^*]+)\*\*/g, "$1")
+		.replace(/\*([^*]+)\*/g, "$1");
 }

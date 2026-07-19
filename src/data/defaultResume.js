@@ -21,7 +21,8 @@ import { DEFAULT_PRESET } from "./presets.js";
 //               not recognized just falls back to a sensible default
 //               instead of breaking anything.
 //
-// **bold**, *italic*, and [label](url) all work anywhere inside content.
+// **bold**, *italic*, and [label](url) all work in visible resume text,
+// including section titles.
 // Add, remove, rename, or reorder sections freely — nothing here is fixed.
 export const DEFAULT_DATA = {
 	header: {
