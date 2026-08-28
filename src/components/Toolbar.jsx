@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 
-function Btn({ onClick, children, primary, title }) {
+function Btn({ onClick, children, primary, title, disabled }) {
 	return (
 		<button
 			type="button"
 			className={`btn${primary ? " btn--primary" : ""}`}
 			onClick={onClick}
 			title={title}
+			disabled={disabled}
 		>
 			{children}
 		</button>
@@ -14,6 +15,9 @@ function Btn({ onClick, children, primary, title }) {
 }
 
 export function Toolbar({
+	currentUsername,
+	syncMessage,
+	syncBusy,
 	presets,
 	selectedPreset,
 	onPresetChange,
@@ -28,7 +32,10 @@ export function Toolbar({
 	onDownloadStarter,
 	onCopyPrompt,
 	onImportFile,
+	onUploadSync,
+	onDownloadSync,
 	onReset,
+	onSignOut,
 }) {
 	const fileInputRef = useRef(null);
 	const [copied, setCopied] = useState(false);
@@ -55,6 +62,9 @@ export function Toolbar({
 	return (
 		<div className="toolbar no-print">
 			<span className="toolbar-brand">PurpleResume</span>
+			{currentUsername ? (
+				<span className="toolbar-user">{currentUsername}</span>
+			) : null}
 			<label className="toolbar-field">
 				<span className="toolbar-field-label">Preset</span>
 				<select
@@ -114,6 +124,20 @@ export function Toolbar({
 			</label>
 			<div className="toolbar-spacer" />
 			<Btn
+				onClick={onDownloadSync}
+				title="Download the latest resume JSON for this account from Supabase"
+				disabled={syncBusy}
+			>
+				{syncBusy ? "Working..." : "↓ Sync Download"}
+			</Btn>
+			<Btn
+				onClick={onUploadSync}
+				title="Upload the current browser JSON for this account to Supabase"
+				disabled={syncBusy}
+			>
+				{syncBusy ? "Working..." : "↑ Sync Upload"}
+			</Btn>
+			<Btn
 				onClick={onDownloadStarter}
 				title="Download the starter JSON — send this plus a job description to ChatGPT"
 			>
@@ -138,6 +162,12 @@ export function Toolbar({
 				↺ Reset
 			</Btn>
 			<Btn
+				onClick={onSignOut}
+				title="Log out and return to the username screen"
+			>
+				Logout
+			</Btn>
+			<Btn
 				onClick={onExportJson}
 				title="Download the current resume as JSON"
 			>
@@ -150,6 +180,9 @@ export function Toolbar({
 			>
 				↓ Export PDF
 			</Btn>
+			{syncMessage ? (
+				<div className="toolbar-sync-message">{syncMessage}</div>
+			) : null}
 			<input
 				ref={fileInputRef}
 				type="file"

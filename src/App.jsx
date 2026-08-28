@@ -10,9 +10,14 @@ import { downloadJson } from "./lib/download.js";
 import { normalize, parseAndNormalize } from "./lib/normalize.js";
 import { countResumeCharacters } from "./lib/resumeMetrics.js";
 import {
+	authenticateUser,
 	clearLocalStorage,
+	downloadResumeFromSupabase,
+	findUser,
 	loadFromLocalStorage,
+	registerUser,
 	saveToLocalStorage,
+	uploadResumeToSupabase,
 } from "./lib/storage.js";
 
 const DEBOUNCE_MS = 350;
@@ -40,15 +45,25 @@ function setMetaTag(name, content) {
 }
 
 export default function App() {
+	const defaultState = normalize(DEFAULT_DATA);
 	const [jsonText, setJsonText] = useState(() =>
-		JSON.stringify(loadFromLocalStorage() ?? DEFAULT_DATA, null, 2),
+		JSON.stringify(defaultState.data, null, 2),
 	);
-	const [data, setData] = useState(
-		() => normalize(loadFromLocalStorage() ?? DEFAULT_DATA).data,
-	);
+	const [data, setData] = useState(() => defaultState.data);
 	const [warnings, setWarnings] = useState([]);
 	const [parseError, setParseError] = useState(null);
 	const [pageMetrics, setPageMetrics] = useState(null);
+	const [currentUsername, setCurrentUsername] = useState(null);
+	const [currentSyncKey, setCurrentSyncKey] = useState(null);
+	const [usernameInput, setUsernameInput] = useState("");
+	const [pendingUsername, setPendingUsername] = useState("");
+	const [passwordInput, setPasswordInput] = useState("");
+	const [authStep, setAuthStep] = useState("username");
+	const [authMode, setAuthMode] = useState(null);
+	const [authError, setAuthError] = useState(null);
+	const [syncMessage, setSyncMessage] = useState("Local edits autosave in this browser.");
+	const [isUploading, setIsUploading] = useState(false);
+	const [isDownloading, setIsDownloading] = useState(false);
 	const debounceRef = useRef(null);
 	const characterCount = countResumeCharacters(data);
 	const selectedMargin = getSharedMargin(data.settings);
@@ -67,6 +82,8 @@ export default function App() {
 	}, [resumeTitle]);
 
 	useEffect(() => {
+		if (!currentUsername) return undefined;
+
 		if (debounceRef.current) clearTimeout(debounceRef.current);
 		debounceRef.current = setTimeout(() => {
 			const result = parseAndNormalize(jsonText);
@@ -74,11 +91,11 @@ export default function App() {
 			if (!result.parseError) {
 				setData(result.data);
 				setWarnings(result.warnings);
-				saveToLocalStorage(result.data);
+				saveToLocalStorage(currentUsername, result.data);
 			}
 		}, DEBOUNCE_MS);
 		return () => clearTimeout(debounceRef.current);
-	}, [jsonText]);
+	}, [currentUsername, jsonText]);
 
 	const updateSettings = (settingsPatch) => {
 		const raw = parseJsonObject(jsonText) ?? data;
@@ -99,7 +116,7 @@ export default function App() {
 		if (!confirmed) return;
 
 		const result = normalize(DEFAULT_DATA);
-		clearLocalStorage();
+		clearLocalStorage(currentUsername);
 		setJsonText(JSON.stringify(DEFAULT_DATA, null, 2));
 		setData(result.data);
 		setWarnings(result.warnings);
@@ -107,9 +124,236 @@ export default function App() {
 		setPageMetrics(null);
 	};
 
+	const handleUsernameSubmit = (event) => {
+		event.preventDefault();
+		const trimmedUsername = String(usernameInput ?? "").trim();
+		if (!trimmedUsername) {
+			setAuthError("Enter a username.");
+			return;
+		}
+
+		setPendingUsername(trimmedUsername);
+		setPasswordInput("");
+		setAuthMode(findUser(trimmedUsername) ? "login" : "signup");
+		setAuthStep("password");
+		setAuthError(null);
+	};
+
+	const handlePasswordSubmit = async (event) => {
+		event.preventDefault();
+		if (!passwordInput) {
+			setAuthError("Enter a password.");
+			return;
+		}
+
+		const result =
+			authMode === "login"
+				? await authenticateUser(pendingUsername, passwordInput)
+				: await registerUser(pendingUsername, passwordInput);
+
+		if (!result.ok) {
+			setAuthError(result.error);
+			return;
+		}
+
+		loadResumeForUser(result.user.username);
+		setCurrentSyncKey(result.user.syncKey ?? null);
+		setSyncMessage("Local edits autosave in this browser.");
+		setUsernameInput("");
+		setPendingUsername("");
+		setPasswordInput("");
+		setAuthStep("username");
+		setAuthMode(null);
+		setAuthError(null);
+	};
+
+	function loadResumeForUser(username) {
+		const result = normalize(loadFromLocalStorage(username) ?? DEFAULT_DATA);
+		setCurrentUsername(username);
+		setJsonText(JSON.stringify(result.data, null, 2));
+		setData(result.data);
+		setWarnings(result.warnings);
+		setParseError(null);
+		setPageMetrics(null);
+	}
+
+	const handleSignOut = () => {
+		setCurrentUsername(null);
+		setCurrentSyncKey(null);
+		setUsernameInput("");
+		setPendingUsername("");
+		setPasswordInput("");
+		setAuthStep("username");
+		setAuthMode(null);
+		setAuthError(null);
+		setJsonText(JSON.stringify(defaultState.data, null, 2));
+		setData(defaultState.data);
+		setWarnings([]);
+		setParseError(null);
+		setPageMetrics(null);
+		setSyncMessage("Local edits autosave in this browser.");
+	};
+
+	const handleUploadToCloud = async () => {
+		if (!currentUsername || !currentSyncKey) {
+			setSyncMessage("Sync failed: please sign in again.");
+			return;
+		}
+
+		if (parseError) {
+			setSyncMessage("Fix JSON errors before uploading.");
+			return;
+		}
+
+		setIsUploading(true);
+		setSyncMessage("Uploading to Supabase...");
+		const result = await uploadResumeToSupabase({
+			username: currentUsername,
+			syncKey: currentSyncKey,
+			data,
+		});
+		setIsUploading(false);
+
+		if (!result.ok) {
+			setSyncMessage(`Upload failed: ${result.error}`);
+			return;
+		}
+
+		setSyncMessage(
+			result.updatedAt
+				? `Uploaded to Supabase at ${new Date(result.updatedAt).toLocaleString()}.`
+				: "Uploaded to Supabase.",
+		);
+	};
+
+	const handleDownloadFromCloud = async () => {
+		if (!currentUsername || !currentSyncKey) {
+			setSyncMessage("Sync failed: please sign in again.");
+			return;
+		}
+
+		setIsDownloading(true);
+		setSyncMessage("Downloading from Supabase...");
+		const result = await downloadResumeFromSupabase({
+			username: currentUsername,
+			syncKey: currentSyncKey,
+		});
+		setIsDownloading(false);
+
+		if (!result.ok) {
+			setSyncMessage(`Download failed: ${result.error}`);
+			return;
+		}
+
+		if (!result.data) {
+			setSyncMessage("No cloud resume found yet for this account.");
+			return;
+		}
+
+		const normalized = normalize(result.data);
+		saveToLocalStorage(currentUsername, normalized.data);
+		setJsonText(JSON.stringify(normalized.data, null, 2));
+		setData(normalized.data);
+		setWarnings(normalized.warnings);
+		setParseError(null);
+		setSyncMessage(
+			result.updatedAt
+				? `Downloaded cloud resume from ${new Date(result.updatedAt).toLocaleString()}.`
+				: "Downloaded cloud resume.",
+		);
+	};
+
+	if (!currentUsername) {
+		const isLogin = authMode === "login";
+
+		return (
+			<div className="auth-shell">
+				<div className="auth-card">
+					<p className="auth-eyebrow">PurpleResume</p>
+					<h1 className="auth-title">Load your resume workspace</h1>
+					<p className="auth-copy">
+						Enter your username first. Existing users enter their password.
+						New users create one, then we load their saved JSON or the
+						starter sample.
+					</p>
+					{authStep === "username" ? (
+						<form className="auth-form" onSubmit={handleUsernameSubmit}>
+							<label className="auth-field">
+								<span>Username</span>
+								<input
+									autoComplete="username"
+									className="auth-input"
+									name="username"
+									onChange={(event) =>
+										setUsernameInput(event.target.value)
+									}
+									placeholder="your-name"
+									value={usernameInput}
+								/>
+							</label>
+							{authError ? (
+								<p className="auth-error">{authError}</p>
+							) : null}
+							<button className="auth-submit" type="submit">
+								Continue
+							</button>
+						</form>
+					) : (
+						<form className="auth-form" onSubmit={handlePasswordSubmit}>
+							<p className="auth-mode">
+								{isLogin ? "Existing user" : "New user"}: {pendingUsername}
+							</p>
+							<label className="auth-field">
+								<span>{isLogin ? "Password" : "Create password"}</span>
+								<input
+									autoComplete={
+										isLogin ? "current-password" : "new-password"
+									}
+									className="auth-input"
+									name="password"
+									onChange={(event) =>
+										setPasswordInput(event.target.value)
+									}
+									placeholder={
+										isLogin ? "Enter password" : "Create password"
+									}
+									type="password"
+									value={passwordInput}
+								/>
+							</label>
+							{authError ? (
+								<p className="auth-error">{authError}</p>
+							) : null}
+							<div className="auth-actions">
+								<button
+									className="auth-secondary"
+									type="button"
+									onClick={() => {
+										setAuthStep("username");
+										setAuthMode(null);
+										setAuthError(null);
+										setPasswordInput("");
+									}}
+								>
+									Back
+								</button>
+								<button className="auth-submit" type="submit">
+									{isLogin ? "Unlock Resume" : "Create Account"}
+								</button>
+							</div>
+						</form>
+					)}
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="app-shell">
 			<Toolbar
+				currentUsername={currentUsername}
+				syncMessage={syncMessage}
+				syncBusy={isUploading || isDownloading}
 				presets={PRESETS}
 				selectedPreset={data.settings.preset}
 				onPresetChange={(preset) => updateSettings({ preset })}
@@ -141,7 +385,10 @@ export default function App() {
 					navigator.clipboard.writeText(buildPrompt(jsonText))
 				}
 				onImportFile={(text) => setJsonText(text)}
+				onUploadSync={handleUploadToCloud}
+				onDownloadSync={handleDownloadFromCloud}
 				onReset={handleReset}
+				onSignOut={handleSignOut}
 			/>
 			<div className="app-body">
 				<div className="editor-pane no-print">
