@@ -61,7 +61,9 @@ export default function App() {
 	const [authStep, setAuthStep] = useState("username");
 	const [authMode, setAuthMode] = useState(null);
 	const [authError, setAuthError] = useState(null);
-	const [syncMessage, setSyncMessage] = useState("Local edits autosave in this browser.");
+	const [syncMessage, setSyncMessage] = useState(
+		"Local edits autosave in this browser.",
+	);
 	const [isUploading, setIsUploading] = useState(false);
 	const [isDownloading, setIsDownloading] = useState(false);
 	const debounceRef = useRef(null);
@@ -168,7 +170,9 @@ export default function App() {
 	};
 
 	function loadResumeForUser(username) {
-		const result = normalize(loadFromLocalStorage(username) ?? DEFAULT_DATA);
+		const result = normalize(
+			loadFromLocalStorage(username) ?? DEFAULT_DATA,
+		);
 		setCurrentUsername(username);
 		setJsonText(JSON.stringify(result.data, null, 2));
 		setData(result.data);
@@ -272,12 +276,15 @@ export default function App() {
 					<p className="auth-eyebrow">PurpleResume</p>
 					<h1 className="auth-title">Load your resume workspace</h1>
 					<p className="auth-copy">
-						Enter your username first. Existing users enter their password.
-						New users create one, then we load their saved JSON or the
-						starter sample.
+						Enter your username first. Existing users enter their
+						password. New users create one, then we load their saved
+						JSON or the starter sample.
 					</p>
 					{authStep === "username" ? (
-						<form className="auth-form" onSubmit={handleUsernameSubmit}>
+						<form
+							className="auth-form"
+							onSubmit={handleUsernameSubmit}
+						>
 							<label className="auth-field">
 								<span>Username</span>
 								<input
@@ -299,15 +306,23 @@ export default function App() {
 							</button>
 						</form>
 					) : (
-						<form className="auth-form" onSubmit={handlePasswordSubmit}>
+						<form
+							className="auth-form"
+							onSubmit={handlePasswordSubmit}
+						>
 							<p className="auth-mode">
-								{isLogin ? "Existing user" : "New user"}: {pendingUsername}
+								{isLogin ? "Existing user" : "New user"}:{" "}
+								{pendingUsername}
 							</p>
 							<label className="auth-field">
-								<span>{isLogin ? "Password" : "Create password"}</span>
+								<span>
+									{isLogin ? "Password" : "Create password"}
+								</span>
 								<input
 									autoComplete={
-										isLogin ? "current-password" : "new-password"
+										isLogin
+											? "current-password"
+											: "new-password"
 									}
 									className="auth-input"
 									name="password"
@@ -315,7 +330,9 @@ export default function App() {
 										setPasswordInput(event.target.value)
 									}
 									placeholder={
-										isLogin ? "Enter password" : "Create password"
+										isLogin
+											? "Enter password"
+											: "Create password"
 									}
 									type="password"
 									value={passwordInput}
@@ -338,7 +355,9 @@ export default function App() {
 									Back
 								</button>
 								<button className="auth-submit" type="submit">
-									{isLogin ? "Unlock Resume" : "Create Account"}
+									{isLogin
+										? "Unlock Resume"
+										: "Create Account"}
 								</button>
 							</div>
 						</form>
