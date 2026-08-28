@@ -14,6 +14,40 @@ The JSON is still the main interface — on purpose, see below. The toolbar sele
 
 That's the whole loop. Every field on the page — fonts, presets, margins, section content — is just JSON, so an LLM tailoring your resume to a specific job description can edit all of it directly, without you touching a form.
 
+## Local autosave + explicit cloud sync
+
+PurpleResume now uses two separate persistence layers:
+
+1. Local edits autosave into browser localStorage (per username) as you type.
+2. Cloud sync is manual, using the toolbar buttons:
+3. **↑ Sync Upload** writes your current browser JSON to Supabase.
+4. **↓ Sync Download** pulls the current Supabase JSON into the browser editor.
+
+This keeps editing snappy/offline-friendly while giving you intentional, explicit sync control.
+
+To make local, dev, and prod all use the same Supabase database, set the same env values in every environment:
+
+```bash
+VITE_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_PUBLIC_SUPABASE_ANON_KEY=<anon-public-key>
+```
+
+### Supabase table setup
+
+Create this table once in your Supabase SQL editor:
+
+```sql
+create table if not exists public.resume_sync (
+	username text not null,
+	sync_key text not null,
+	resume_data jsonb not null,
+	updated_at timestamptz not null default now(),
+	primary key (username, sync_key)
+);
+```
+
+Then add RLS policies that match your org's security model.
+
 ## Why this is built the way it is
 
 **Single column, always.** There used to be a 2-column option. It's gone. Column layouts are the single most consistently flagged risk factor in ATS parsing guidance — some parsers reconstruct lines by on-page position and can merge sidebar and main-column text that happen to sit at the same height. Not worth the risk for something a resume builder controls entirely.
@@ -100,25 +134,29 @@ npm run dev      # local dev server
 npm run build    # production build to dist/
 ```
 
+If you run locally, add a `.env.local` file in the project root with `VITE_PUBLIC_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_ANON_KEY`.
+
 ## Project structure
 
 ```
 src/
-  App.jsx                     — top-level shell: state, debounced parse loop, layout
-  components/
-    Toolbar.jsx                — export/import/starter/prompt actions
-    JsonEditor.jsx              — CodeMirror pane + validation status
-    ResumePreview.jsx           — the actual resume renderer
-  data/
-    defaultResume.js            — starter content (doubles as schema documentation)
-    presets.js                  — Jake-style layout presets
-    fonts.js                    — the font list + safe CSS stacks
-    chatgptPrompt.js             — builds the copyable ChatGPT prompt
-  lib/
-    normalize.js                 — defensive shape-checking; the actual safety net
-    markdown.jsx                  — **bold** / *italic* / [link](url) parsing
-    storage.js, download.js, id.js
-  index.css                     — app chrome + resume document styles + print rules
+	App.jsx                     — top-level shell: state, local autosave, sync actions
+	components/
+		Toolbar.jsx               — sync/import/export/starter/prompt actions
+		JsonEditor.jsx            — CodeMirror pane + validation status
+		ResumePreview.jsx         — the actual resume renderer
+	data/
+		defaultResume.js          — starter content (doubles as schema documentation)
+		presets.js                — Jake-style layout presets
+		fonts.js                  — the font list + safe CSS stacks
+		chatgptPrompt.js          — builds the copyable ChatGPT prompt
+	lib/
+		normalize.js              — defensive shape-checking; the actual safety net
+		markdown.jsx              — **bold** / *italic* / [link](url) parsing
+		storage.js                — local auth + local storage + Supabase sync helpers
+		supabase.js               — shared Supabase client
+		download.js, id.js
+	index.css                   — app chrome + resume document styles + print rules
 ```
 
 ## A note on "ATS compliant"
