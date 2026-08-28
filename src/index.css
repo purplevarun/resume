@@ -164,13 +164,60 @@ body {
 }
 
 @media (max-width: 900px) {
+	.toolbar {
+		padding: 10px 12px;
+		gap: 6px;
+	}
+	.toolbar-brand {
+		width: 100%;
+		margin-right: 0;
+	}
+	.toolbar-field {
+		flex: 1 1 calc(50% - 8px);
+		min-width: 0;
+	}
+	.toolbar-spacer {
+		display: none;
+	}
+	.btn {
+		flex: 1 1 auto;
+	}
 	.app-body {
 		flex-direction: column;
+		height: auto;
+		min-height: 0;
 	}
 	.editor-pane {
-		flex: 0 0 45%;
+		flex: 0 0 auto;
+		min-width: 0;
+		width: 100%;
 		border-right: none;
 		border-bottom: 1px solid #21262d;
+	}
+	.preview-pane {
+		padding: 16px;
+	}
+}
+
+@media (max-width: 640px) {
+	.toolbar {
+		align-items: stretch;
+	}
+	.toolbar-field,
+	.btn {
+		flex: 1 1 100%;
+	}
+	.select {
+		width: 100%;
+		min-width: 0;
+	}
+	.preview-pane {
+		padding: 12px;
+	}
+	.resume-paper {
+		width: min(100%, 215.9mm);
+		height: auto;
+		min-height: 279.4mm;
 	}
 }
 
