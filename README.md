@@ -2,17 +2,25 @@
 
 A free, ATS-first resume builder. Edit a plain JSON document on the left, get a live Jake-style letter-page preview on the right, export straight to PDF.
 
-The JSON is still the main interface — on purpose, see below. The toolbar selectors are quick ways to update `settings.preset`, `settings.fontFamily`, and all four margin fields together.
+The JSON is still the main interface. The formatting controls update `settings.preset`, `settings.fontFamily`, `settings.fontSize`, and all four margin fields together.
 
 ## The workflow this is actually built for
 
 1. Find a job description you want to apply to.
-2. Click **↓ Starter JSON** (first time) or **↓ Export JSON** (if you already have a resume going) to grab your resume as JSON.
-3. Click **Copy Prompt** — it copies a ready-made prompt with your JSON already dropped in. Paste it into ChatGPT (or any LLM), then paste the job description where the prompt asks for it.
+2. Open **File > Starter JSON** (first time) or **File > Export JSON** (if you already have a resume going) to grab your resume as JSON.
+3. Click **Copy prompt** to copy a ready-made prompt with your JSON already included. Paste it into ChatGPT (or any LLM), then paste the job description where the prompt asks for it.
 4. Paste whatever comes back into the JSON editor here. The preview updates as you type.
-5. Click **↓ Export PDF**. Your browser's print dialog opens — choose "Save as PDF."
+5. Click **Export PDF**. Your browser's print dialog opens; choose "Save as PDF."
 
 That's the whole loop. Every field on the page — fonts, presets, margins, section content — is just JSON, so an LLM tailoring your resume to a specific job description can edit all of it directly, without you touching a form.
+
+## Workspace controls
+
+- **Source / Split / Preview** changes the workspace layout without discarding editor history. Phones use the Source and Preview views.
+- The source toolbar provides undo, redo, find/replace, JSON formatting, and copying. Formatting also removes surrounding Markdown code fences and preserves custom JSON fields.
+- The preview starts fitted to the available space, with manual zoom from 25% to 150%. Zoom never changes the resume's font size, margins, or printed dimensions.
+- The page meter measures used printable space. An overflowing resume is flagged separately from JSON syntax errors.
+- Export waits for the latest edit to finish parsing and is disabled for invalid JSON. Printing includes only the resume, even from Source-only view.
 
 ## Local autosave + explicit cloud sync
 
@@ -20,10 +28,20 @@ PurpleResume now uses two separate persistence layers:
 
 1. Local edits autosave into browser localStorage (per username) as you type.
 2. Cloud sync is manual, using the toolbar buttons:
-3. **↑ Sync Upload** writes your current browser JSON to Supabase.
-4. **↓ Sync Download** pulls the current Supabase JSON into the browser editor.
+3. **Upload cloud copy** writes your current browser JSON to Supabase.
+4. **Download cloud copy** asks for confirmation before replacing your browser draft with the current Supabase JSON.
 
 This keeps editing snappy/offline-friendly while giving you intentional, explicit sync control.
+
+### Sign-in and account recovery
+
+Choose **Sign in** or **Create account** explicitly. Usernames ignore surrounding whitespace and letter case, including when recovering older mixed-case cloud records.
+
+When Supabase is configured, signup checks for an existing cloud username and saves the new account's initial resume before reporting success. Later resume edits still require **Upload cloud copy**. Sign-in keeps a matching local draft available offline; if the account is not cached in this browser, it verifies the username and password-derived sync key against Supabase and restores the saved resume.
+
+Older accounts created only in browser storage must use **Upload cloud copy** from their original browser once before they can be recovered elsewhere. Without Supabase configuration, accounts remain browser-local. Network and storage failures are reported separately from invalid credentials.
+
+This retains the existing password-derived sync-key scheme, not Supabase Auth. Client-side query filters are not an authorization boundary; production deployments need appropriate server-side access controls.
 
 To make local, dev, and prod all use the same Supabase database, set the same env values in every environment:
 
@@ -120,11 +138,12 @@ The Margin toolbar selector applies the same value to top, bottom, left, and rig
 
 ## If something looks wrong
 
-There's no form validation anymore, so the JSON editor's status strip is the only safety net:
+The source footer tracks JSON validity; the preview footer tracks printed page fit:
 
-- **✓ Valid** — parses and matches the expected shape.
-- **⚠ N notes** — parsed fine, but something was missing or malformed (a bad preset name, a section with no title, and so on). The app fills in a sensible default and tells you exactly what it changed. The resume still renders.
-- **✗ Invalid JSON** — doesn't parse at all. The preview keeps showing the last valid version until this is fixed.
+- **Valid JSON**: the document parses successfully.
+- **Normalization notes**: the app supplied defaults for missing or malformed values. Expand the notes above the source to inspect them.
+- **Invalid JSON**: the document cannot be parsed. The preview keeps its last valid version and exports remain disabled until it is fixed.
+- **Over one page**: the rendered content exceeds the printable area. Reduce content, font size, or margins; the meter updates independently of preview zoom.
 
 ## Getting started
 
@@ -132,6 +151,7 @@ There's no form validation anymore, so the JSON editor's status strip is the onl
 npm install
 npm run dev      # local dev server
 npm run build    # production build to dist/
+npm test         # authentication regression tests (Node 22.13+)
 ```
 
 If you run locally, add a `.env.local` file in the project root with `VITE_PUBLIC_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_ANON_KEY`.
@@ -153,7 +173,7 @@ src/
 	lib/
 		normalize.js              — defensive shape-checking; the actual safety net
 		markdown.jsx              — **bold** / *italic* / [link](url) parsing
-		storage.js                — local auth + local storage + Supabase sync helpers
+		storage.js                — local/cloud account recovery + storage + sync helpers
 		supabase.js               — shared Supabase client
 		download.js, id.js
 	index.css                   — app chrome + resume document styles + print rules

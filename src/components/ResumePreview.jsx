@@ -1,8 +1,17 @@
-import { useLayoutEffect, useRef } from "react";
+import {
+	CircleCheck,
+	FileText,
+	Minus,
+	Plus,
+	TriangleAlert,
+} from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { fontStack } from "../data/fonts.js";
 import { getPreset } from "../data/presets.js";
 import { contactHref, renderText } from "../lib/markdown.jsx";
+import { IconButton } from "./IconButton.jsx";
 
+const LETTER_WIDTH_MM = 215.9;
 const LETTER_HEIGHT_MM = 279.4;
 const OVERFLOW_TOLERANCE_PX = 2;
 let pxPerMm;
@@ -141,11 +150,16 @@ function SectionBlock({ section, preset }) {
 	);
 }
 
-export function ResumePreview({ data, onMetricsChange }) {
+export function ResumePreview({ data, onMetricsChange, metrics, hasError }) {
 	const preset = getPreset(data.settings.preset);
 	const paperRef = useRef(null);
 	const contentRef = useRef(null);
 	const lastMetricsRef = useRef(null);
+	const viewportRef = useRef(null);
+	const [zoom, setZoom] = useState("fit");
+	const [fitScale, setFitScale] = useState(1);
+	const scale = zoom === "fit" ? fitScale : zoom / 100;
+	const fillPercent = Math.round((metrics?.fillRatio ?? 0) * 100);
 	const s = data.settings;
 	const paperStyle = {
 		fontFamily: fontStack(s.fontFamily),
@@ -157,6 +171,42 @@ export function ResumePreview({ data, onMetricsChange }) {
 	};
 
 	useLayoutEffect(() => {
+		const viewport = viewportRef.current;
+		const updateFit = () => {
+			const paper = paperRef.current;
+			if (
+				!viewport.clientWidth ||
+				!viewport.clientHeight ||
+				!paper?.offsetWidth
+			)
+				return;
+			const styles = getComputedStyle(viewport);
+			const width =
+				viewport.clientWidth -
+				Number.parseFloat(styles.paddingLeft) -
+				Number.parseFloat(styles.paddingRight);
+			const height =
+				viewport.clientHeight -
+				Number.parseFloat(styles.paddingTop) -
+				Number.parseFloat(styles.paddingBottom);
+			setFitScale(
+				Math.max(
+					0.1,
+					Math.min(
+						1,
+						width / paper.offsetWidth,
+						height / paper.offsetHeight,
+					),
+				),
+			);
+		};
+		const observer = new ResizeObserver(updateFit);
+		observer.observe(viewport);
+		updateFit();
+		return () => observer.disconnect();
+	}, []);
+
+	useLayoutEffect(() => {
 		const paper = paperRef.current;
 		const content = contentRef.current;
 		if (!paper || !onMetricsChange) return;
@@ -165,26 +215,39 @@ export function ResumePreview({ data, onMetricsChange }) {
 		const updateMetrics = () => {
 			if (!active) return;
 			const paperRect = paper.getBoundingClientRect();
+			if (!paperRect.width || !paper.offsetWidth) return;
 			const contentRect = content?.getBoundingClientRect() ?? paperRect;
 			const styles = getComputedStyle(paper);
-			const usableBottom =
-				paperRect.bottom - Number.parseFloat(styles.paddingBottom);
-			const overflowPx = Math.max(0, contentRect.bottom - usableBottom);
-			const usedHeightPx = contentRect.bottom - paperRect.top;
+			const renderScale = paperRect.width / paper.offsetWidth;
+			const paddingTop = Number.parseFloat(styles.paddingTop);
+			const paddingBottom = Number.parseFloat(styles.paddingBottom);
+			const usedHeightPx =
+				(contentRect.bottom - paperRect.top) / renderScale;
 			const pageHeightPx =
-				paperRect.height || LETTER_HEIGHT_MM * getPxPerMm();
+				paper.offsetHeight || LETTER_HEIGHT_MM * getPxPerMm();
+			const overflowPx = Math.max(
+				0,
+				usedHeightPx - (pageHeightPx - paddingBottom),
+			);
+			const contentHeightPx = contentRect.height / renderScale;
+			const usableHeightPx = Math.max(
+				1,
+				pageHeightPx - paddingTop - paddingBottom,
+			);
 			const pageCount = usedHeightPx / pageHeightPx;
 			const metrics = {
 				isOverflowing: overflowPx > OVERFLOW_TOLERANCE_PX,
 				overflowPx: Math.ceil(overflowPx),
 				pageCount,
+				fillRatio: contentHeightPx / usableHeightPx,
 			};
 			const last = lastMetricsRef.current;
 			if (
 				last &&
 				last.isOverflowing === metrics.isOverflowing &&
 				last.overflowPx === metrics.overflowPx &&
-				Math.abs(last.pageCount - metrics.pageCount) < 0.01
+				Math.abs(last.pageCount - metrics.pageCount) < 0.01 &&
+				Math.abs(last.fillRatio - metrics.fillRatio) < 0.005
 			) {
 				return;
 			}
@@ -211,30 +274,139 @@ export function ResumePreview({ data, onMetricsChange }) {
 	}, [data, onMetricsChange]);
 
 	return (
-		<div
-			id="resume-paper"
-			className="resume-paper"
-			ref={paperRef}
-			style={paperStyle}
-		>
-			<div className="resume-page-content" ref={contentRef}>
-				<ResumeHeader header={data.header} preset={preset} />
-				{data.sections.length === 0 ? (
-					<p className="resume-empty">
-						No sections yet — add some in the JSON editor on the
-						left.
-					</p>
-				) : (
-					data.sections.map((section) => (
-						<SectionBlock
-							key={section.id}
-							section={section}
-							preset={preset}
-						/>
-					))
-				)}
+		<section className="preview-pane" aria-label="Resume preview">
+			<div className="pane-heading no-print">
+				<div className="preview-title-group">
+					<h2 className="pane-title">
+						<FileText size={16} aria-hidden="true" />
+						Preview
+					</h2>
+					<span className="paper-format">
+						{hasError ? "Last valid preview" : "US Letter"}
+					</span>
+				</div>
+				<div
+					className="zoom-controls"
+					role="group"
+					aria-label="Preview zoom controls"
+				>
+					<IconButton
+						icon={Minus}
+						label="Zoom out"
+						disabled={scale <= 0.25}
+						onClick={() =>
+							setZoom(
+								Math.max(25, Math.ceil(scale * 4) * 25 - 25),
+							)
+						}
+					/>
+					<select
+						aria-label="Preview zoom"
+						value={zoom}
+						onChange={(event) =>
+							setZoom(
+								event.target.value === "fit"
+									? "fit"
+									: Number(event.target.value),
+							)
+						}
+					>
+						<option value="fit">
+							Fit ({Math.round(fitScale * 100)}%)
+						</option>
+						{[25, 50, 75, 100, 125, 150].map((percent) => (
+							<option key={percent} value={percent}>
+								{percent}%
+							</option>
+						))}
+					</select>
+					<IconButton
+						icon={Plus}
+						label="Zoom in"
+						disabled={scale >= 1.5}
+						onClick={() =>
+							setZoom(
+								Math.min(150, Math.floor(scale * 4) * 25 + 25),
+							)
+						}
+						align="end"
+					/>
+				</div>
 			</div>
-		</div>
+			<div className="preview-viewport" ref={viewportRef}>
+				<div
+					className="paper-stage"
+					style={{
+						width: `${LETTER_WIDTH_MM * scale}mm`,
+						minHeight: `${LETTER_HEIGHT_MM * scale}mm`,
+					}}
+				>
+					<div
+						className="paper-transform"
+						style={{ transform: `scale(${scale})` }}
+					>
+						<div
+							id="resume-paper"
+							className="resume-paper"
+							ref={paperRef}
+							style={paperStyle}
+						>
+							<div
+								className="resume-page-content"
+								ref={contentRef}
+							>
+								<ResumeHeader
+									header={data.header}
+									preset={preset}
+								/>
+								{data.sections.length === 0 ? (
+									<p className="resume-empty">
+										No sections yet.
+									</p>
+								) : (
+									data.sections.map((section) => (
+										<SectionBlock
+											key={section.id}
+											section={section}
+											preset={preset}
+										/>
+									))
+								)}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div
+				className={`preview-footer no-print ${metrics?.isOverflowing ? "is-overflowing" : ""}`}
+			>
+				<span className="page-fit-status" role="status">
+					{metrics?.isOverflowing ? (
+						<TriangleAlert size={14} aria-hidden="true" />
+					) : (
+						<CircleCheck size={14} aria-hidden="true" />
+					)}
+					{!metrics
+						? "Measuring page"
+						: metrics.isOverflowing
+							? `${metrics.overflowPx} px over one page`
+							: "Fits one page"}
+				</span>
+				<div
+					className="page-fit-meter"
+					role="meter"
+					aria-label="Printable area used"
+					aria-valuemin={0}
+					aria-valuemax={100}
+					aria-valuenow={Math.min(fillPercent, 100)}
+					aria-valuetext={`${fillPercent}% of printable area`}
+				>
+					<span style={{ width: `${Math.min(fillPercent, 100)}%` }} />
+				</div>
+				<span className="page-fill-label">{fillPercent}% used</span>
+				<span className="page-dimensions">8.5 x 11 in</span>
+			</div>
+		</section>
 	);
 }
 

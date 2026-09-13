@@ -7,14 +7,18 @@
 		"dev": "vite",
 		"build": "vite build",
 		"lint": "eslint .",
+		"test": "node --experimental-test-module-mocks --test",
 		"preview": "vite preview",
 		"format": "prettier --write .",
 		"clean": "rm -rf dist node_modules && bun install && bun run format"
 	},
 	"dependencies": {
+		"@codemirror/commands": "^6.11.0",
 		"@codemirror/lang-json": "^6.0.2",
+		"@codemirror/search": "^6.7.2",
 		"@supabase/supabase-js": "^2.112.4",
 		"@uiw/react-codemirror": "^4.25.11",
+		"lucide-react": "^1.45.0",
 		"react": "^19.2.6",
 		"react-dom": "^19.2.6"
 	},

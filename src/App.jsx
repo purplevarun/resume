@@ -1,4 +1,6 @@
+import { ArrowRight, Eye, EyeOff, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { IconButton } from "./components/IconButton.jsx";
 import { JsonEditor } from "./components/JsonEditor.jsx";
 import { ResumePreview } from "./components/ResumePreview.jsx";
 import { Toolbar } from "./components/Toolbar.jsx";
@@ -13,8 +15,6 @@ import {
 	authenticateUser,
 	clearLocalStorage,
 	downloadResumeFromSupabase,
-	findUser,
-	loadFromLocalStorage,
 	registerUser,
 	saveToLocalStorage,
 	uploadResumeToSupabase,
@@ -52,24 +52,35 @@ export default function App() {
 	const [data, setData] = useState(() => defaultState.data);
 	const [warnings, setWarnings] = useState([]);
 	const [parseError, setParseError] = useState(null);
+	const [isParsing, setIsParsing] = useState(false);
 	const [pageMetrics, setPageMetrics] = useState(null);
+	const [viewMode, setViewMode] = useState("split");
+	const [isCompact, setIsCompact] = useState(
+		() => window.matchMedia("(max-width: 900px)").matches,
+	);
 	const [currentUsername, setCurrentUsername] = useState(null);
 	const [currentSyncKey, setCurrentSyncKey] = useState(null);
 	const [usernameInput, setUsernameInput] = useState("");
-	const [pendingUsername, setPendingUsername] = useState("");
 	const [passwordInput, setPasswordInput] = useState("");
-	const [authStep, setAuthStep] = useState("username");
-	const [authMode, setAuthMode] = useState(null);
+	const [showPassword, setShowPassword] = useState(false);
+	const [authMode, setAuthMode] = useState("login");
 	const [authError, setAuthError] = useState(null);
-	const [syncMessage, setSyncMessage] = useState(
-		"Local edits autosave in this browser.",
-	);
+	const [isAuthenticating, setIsAuthenticating] = useState(false);
+	const [syncMessage, setSyncMessage] = useState("");
 	const [isUploading, setIsUploading] = useState(false);
 	const [isDownloading, setIsDownloading] = useState(false);
 	const debounceRef = useRef(null);
 	const characterCount = countResumeCharacters(data);
 	const selectedMargin = getSharedMargin(data.settings);
 	const resumeTitle = getResumeTitle(data.header?.name);
+	const activeView = isCompact && viewMode === "split" ? "preview" : viewMode;
+
+	useEffect(() => {
+		const media = window.matchMedia("(max-width: 900px)");
+		const handleChange = (event) => setIsCompact(event.matches);
+		media.addEventListener("change", handleChange);
+		return () => media.removeEventListener("change", handleChange);
+	}, []);
 
 	useEffect(() => {
 		document.title = resumeTitle;
@@ -90,6 +101,7 @@ export default function App() {
 		debounceRef.current = setTimeout(() => {
 			const result = parseAndNormalize(jsonText);
 			setParseError(result.parseError);
+			setIsParsing(false);
 			if (!result.parseError) {
 				setData(result.data);
 				setWarnings(result.warnings);
@@ -99,16 +111,40 @@ export default function App() {
 		return () => clearTimeout(debounceRef.current);
 	}, [currentUsername, jsonText]);
 
+	const handleJsonChange = (text) => {
+		if (text === jsonText) return;
+		setJsonText(text);
+		setIsParsing(true);
+	};
+
 	const updateSettings = (settingsPatch) => {
-		const raw = parseJsonObject(jsonText) ?? data;
+		const raw = parseJsonObject(jsonText);
+		if (!raw) return;
+		const settings = isObject(raw.settings) ? raw.settings : data.settings;
+		const patch =
+			typeof settingsPatch === "function"
+				? settingsPatch(settings)
+				: settingsPatch;
 		const next = {
 			...raw,
 			settings: {
-				...(isObject(raw.settings) ? raw.settings : data.settings),
-				...settingsPatch,
+				...settings,
+				...patch,
 			},
 		};
-		setJsonText(JSON.stringify(next, null, 2));
+		handleJsonChange(JSON.stringify(next, null, 2));
+	};
+
+	const handleFontSizeStep = (step) => {
+		updateSettings((settings) => {
+			const currentSize = Number(
+				settings.fontSize ?? data.settings.fontSize,
+			);
+			const size = Number.isFinite(currentSize)
+				? currentSize
+				: data.settings.fontSize;
+			return { fontSize: Math.max(6, Math.min(30, size + step)) };
+		});
 	};
 
 	const handleReset = () => {
@@ -123,61 +159,63 @@ export default function App() {
 		setData(result.data);
 		setWarnings(result.warnings);
 		setParseError(null);
+		setIsParsing(false);
 		setPageMetrics(null);
 	};
 
-	const handleUsernameSubmit = (event) => {
+	const handlePasswordSubmit = async (event) => {
 		event.preventDefault();
+		if (isAuthenticating) return;
+
 		const trimmedUsername = String(usernameInput ?? "").trim();
 		if (!trimmedUsername) {
 			setAuthError("Enter a username.");
 			return;
 		}
-
-		setPendingUsername(trimmedUsername);
-		setPasswordInput("");
-		setAuthMode(findUser(trimmedUsername) ? "login" : "signup");
-		setAuthStep("password");
-		setAuthError(null);
-	};
-
-	const handlePasswordSubmit = async (event) => {
-		event.preventDefault();
 		if (!passwordInput) {
 			setAuthError("Enter a password.");
 			return;
 		}
 
-		const result =
-			authMode === "login"
-				? await authenticateUser(pendingUsername, passwordInput)
-				: await registerUser(pendingUsername, passwordInput);
-
-		if (!result.ok) {
-			setAuthError(result.error);
-			return;
-		}
-
-		loadResumeForUser(result.user.username);
-		setCurrentSyncKey(result.user.syncKey ?? null);
-		setSyncMessage("Local edits autosave in this browser.");
-		setUsernameInput("");
-		setPendingUsername("");
-		setPasswordInput("");
-		setAuthStep("username");
-		setAuthMode(null);
+		setIsAuthenticating(true);
 		setAuthError(null);
+		try {
+			const result =
+				authMode === "login"
+					? await authenticateUser(trimmedUsername, passwordInput)
+					: await registerUser(trimmedUsername, passwordInput);
+
+			if (!result.ok) {
+				setAuthError(result.error);
+				return;
+			}
+
+			loadResumeForUser(result.user);
+			setCurrentSyncKey(result.user.syncKey ?? null);
+			setSyncMessage("");
+			setUsernameInput("");
+			setPasswordInput("");
+			setShowPassword(false);
+			setAuthMode("login");
+		} catch (error) {
+			setAuthError(
+				error instanceof Error
+					? error.message
+					: "Unable to sign in. Please try again.",
+			);
+		} finally {
+			setIsAuthenticating(false);
+		}
 	};
 
-	function loadResumeForUser(username) {
-		const result = normalize(
-			loadFromLocalStorage(username) ?? DEFAULT_DATA,
-		);
-		setCurrentUsername(username);
+	function loadResumeForUser(user) {
+		const result = normalize(user.resumeData ?? DEFAULT_DATA);
+		setCurrentUsername(user.username);
 		setJsonText(JSON.stringify(result.data, null, 2));
 		setData(result.data);
 		setWarnings(result.warnings);
 		setParseError(null);
+		setIsParsing(false);
 		setPageMetrics(null);
 	}
 
@@ -185,17 +223,17 @@ export default function App() {
 		setCurrentUsername(null);
 		setCurrentSyncKey(null);
 		setUsernameInput("");
-		setPendingUsername("");
 		setPasswordInput("");
-		setAuthStep("username");
-		setAuthMode(null);
+		setShowPassword(false);
+		setAuthMode("login");
 		setAuthError(null);
 		setJsonText(JSON.stringify(defaultState.data, null, 2));
 		setData(defaultState.data);
 		setWarnings([]);
 		setParseError(null);
+		setIsParsing(false);
 		setPageMetrics(null);
-		setSyncMessage("Local edits autosave in this browser.");
+		setSyncMessage("");
 	};
 
 	const handleUploadToCloud = async () => {
@@ -236,6 +274,9 @@ export default function App() {
 			return;
 		}
 
+		if (!window.confirm("Replace your local draft with the cloud copy?"))
+			return;
+
 		setIsDownloading(true);
 		setSyncMessage("Downloading from Supabase...");
 		const result = await downloadResumeFromSupabase({
@@ -260,6 +301,7 @@ export default function App() {
 		setData(normalized.data);
 		setWarnings(normalized.warnings);
 		setParseError(null);
+		setIsParsing(false);
 		setSyncMessage(
 			result.updatedAt
 				? `Downloaded cloud resume from ${new Date(result.updatedAt).toLocaleString()}.`
@@ -273,95 +315,153 @@ export default function App() {
 		return (
 			<div className="auth-shell">
 				<div className="auth-card">
-					<p className="auth-eyebrow">PurpleResume</p>
-					<h1 className="auth-title">Load your resume workspace</h1>
-					<p className="auth-copy">
-						Enter your username first. Existing users enter their
-						password. New users create one, then we load their saved
-						JSON or the starter sample.
-					</p>
-					{authStep === "username" ? (
-						<form
-							className="auth-form"
-							onSubmit={handleUsernameSubmit}
+					<div className="brand-lockup auth-brand">
+						<span className="brand-mark">
+							<FileText
+								size={19}
+								strokeWidth={1.7}
+								aria-hidden="true"
+							/>
+						</span>
+						<span>
+							Purple<span className="brand-wordmark">Resume</span>
+						</span>
+					</div>
+					<h1 className="auth-title">Your resume workspace</h1>
+					<div
+						className="auth-actions"
+						role="group"
+						aria-label="Account access"
+					>
+						<button
+							aria-pressed={isLogin}
+							className={
+								isLogin ? "auth-submit" : "auth-secondary"
+							}
+							disabled={isAuthenticating}
+							onClick={() => {
+								if (isLogin) return;
+								setAuthMode("login");
+								setAuthError(null);
+								setPasswordInput("");
+								setShowPassword(false);
+							}}
+							type="button"
 						>
-							<label className="auth-field">
-								<span>Username</span>
-								<input
-									autoComplete="username"
-									className="auth-input"
-									name="username"
-									onChange={(event) =>
-										setUsernameInput(event.target.value)
-									}
-									placeholder="your-name"
-									value={usernameInput}
-								/>
+							Sign in
+						</button>
+						<button
+							aria-pressed={!isLogin}
+							className={
+								isLogin ? "auth-secondary" : "auth-submit"
+							}
+							disabled={isAuthenticating}
+							onClick={() => {
+								if (!isLogin) return;
+								setAuthMode("signup");
+								setAuthError(null);
+								setPasswordInput("");
+								setShowPassword(false);
+							}}
+							type="button"
+						>
+							Create account
+						</button>
+					</div>
+					<form
+						className="auth-form"
+						onSubmit={handlePasswordSubmit}
+						aria-busy={isAuthenticating}
+					>
+						<label className="auth-field">
+							<span>Username</span>
+							<input
+								autoCapitalize="none"
+								autoComplete="username"
+								className="auth-input"
+								disabled={isAuthenticating}
+								name="username"
+								onChange={(event) => {
+									setUsernameInput(event.target.value);
+									setAuthError(null);
+								}}
+								placeholder="your-name"
+								required
+								spellCheck={false}
+								value={usernameInput}
+							/>
+						</label>
+						<div className="auth-field">
+							<label htmlFor="account-password">
+								{isLogin ? "Password" : "Create password"}
 							</label>
-							{authError ? (
-								<p className="auth-error">{authError}</p>
-							) : null}
-							<button className="auth-submit" type="submit">
-								Continue
-							</button>
-						</form>
-					) : (
-						<form
-							className="auth-form"
-							onSubmit={handlePasswordSubmit}
-						>
-							<p className="auth-mode">
-								{isLogin ? "Existing user" : "New user"}:{" "}
-								{pendingUsername}
-							</p>
-							<label className="auth-field">
-								<span>
-									{isLogin ? "Password" : "Create password"}
-								</span>
+							<div className="password-input-wrap">
 								<input
+									id="account-password"
 									autoComplete={
 										isLogin
 											? "current-password"
 											: "new-password"
 									}
 									className="auth-input"
+									disabled={isAuthenticating}
 									name="password"
-									onChange={(event) =>
-										setPasswordInput(event.target.value)
-									}
+									onChange={(event) => {
+										setPasswordInput(event.target.value);
+										setAuthError(null);
+									}}
 									placeholder={
 										isLogin
 											? "Enter password"
 											: "Create password"
 									}
-									type="password"
+									required
+									type={showPassword ? "text" : "password"}
 									value={passwordInput}
 								/>
-							</label>
-							{authError ? (
-								<p className="auth-error">{authError}</p>
-							) : null}
-							<div className="auth-actions">
-								<button
-									className="auth-secondary"
-									type="button"
-									onClick={() => {
-										setAuthStep("username");
-										setAuthMode(null);
-										setAuthError(null);
-										setPasswordInput("");
-									}}
-								>
-									Back
-								</button>
-								<button className="auth-submit" type="submit">
-									{isLogin
-										? "Unlock Resume"
-										: "Create Account"}
-								</button>
+								<IconButton
+									icon={showPassword ? EyeOff : Eye}
+									label={
+										showPassword
+											? "Hide password"
+											: "Show password"
+									}
+									onClick={() =>
+										setShowPassword(!showPassword)
+									}
+									disabled={isAuthenticating}
+									align="end"
+								/>
 							</div>
-						</form>
-					)}
+						</div>
+						{authError ? (
+							<p className="auth-error" role="alert">
+								{authError}
+							</p>
+						) : null}
+						<button
+							className="auth-submit"
+							disabled={isAuthenticating}
+							type="submit"
+						>
+							{isAuthenticating
+								? isLogin
+									? "Signing in..."
+									: "Creating account..."
+								: isLogin
+									? "Sign in"
+									: "Create account"}
+							{isAuthenticating ? (
+								<Loader2
+									size={16}
+									className="is-spinning"
+									aria-hidden="true"
+								/>
+							) : (
+								<ArrowRight size={16} aria-hidden="true" />
+							)}
+						</button>
+					</form>
 				</div>
 			</div>
 		);
@@ -371,8 +471,16 @@ export default function App() {
 		<div className="app-shell">
 			<Toolbar
 				currentUsername={currentUsername}
+				resumeTitle={resumeTitle}
+				viewMode={activeView}
+				onViewChange={setViewMode}
+				fontSize={data.settings.fontSize}
+				onFontSizeStep={handleFontSizeStep}
+				isParsing={isParsing}
+				hasError={Boolean(parseError)}
 				syncMessage={syncMessage}
 				syncBusy={isUploading || isDownloading}
+				onDismissMessage={() => setSyncMessage("")}
 				presets={PRESETS}
 				selectedPreset={data.settings.preset}
 				onPresetChange={(preset) => updateSettings({ preset })}
@@ -403,17 +511,23 @@ export default function App() {
 				onCopyPrompt={() =>
 					navigator.clipboard.writeText(buildPrompt(jsonText))
 				}
-				onImportFile={(text) => setJsonText(text)}
+				onImportFile={handleJsonChange}
 				onUploadSync={handleUploadToCloud}
 				onDownloadSync={handleDownloadFromCloud}
 				onReset={handleReset}
 				onSignOut={handleSignOut}
 			/>
-			<div className="app-body">
-				<div className="editor-pane no-print">
+			<main
+				className={`app-body view-${activeView}`}
+				aria-label="Resume workspace"
+			>
+				<section
+					className="editor-pane no-print"
+					aria-label="JSON source"
+				>
 					<JsonEditor
 						text={jsonText}
-						onChange={setJsonText}
+						onChange={handleJsonChange}
 						warnings={warnings}
 						parseError={parseError}
 						resumeMetrics={{
@@ -421,14 +535,14 @@ export default function App() {
 							page: pageMetrics,
 						}}
 					/>
-				</div>
-				<div className="preview-pane">
-					<ResumePreview
-						data={data}
-						onMetricsChange={setPageMetrics}
-					/>
-				</div>
-			</div>
+				</section>
+				<ResumePreview
+					data={data}
+					onMetricsChange={setPageMetrics}
+					metrics={pageMetrics}
+					hasError={Boolean(parseError)}
+				/>
+			</main>
 		</div>
 	);
 }

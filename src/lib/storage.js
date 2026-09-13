@@ -1,3 +1,4 @@
+import { DEFAULT_DATA } from "../data/defaultResume.js";
 import { getSupabaseClient } from "./supabase.js";
 
 const USERS_KEY = "purpleresume_users_v1";
@@ -24,17 +25,73 @@ export async function registerUser(username, password) {
 
 	const users = readUsers();
 	const key = getUserKey(trimmedUsername);
-	if (users[key]) {
-		return { ok: false, error: "That username already exists." };
+	if (Object.hasOwn(users, key)) {
+		return {
+			ok: false,
+			error: "That username already exists. Sign in instead.",
+		};
 	}
 
 	const user = {
 		username: trimmedUsername,
 		passwordHash: await hashPassword(password),
-		resumeData: getLegacySeedData(users),
+		resumeData: getLegacySeedData(users) ?? DEFAULT_DATA,
 	};
-	users[key] = user;
-	writeUsers(users);
+	const supabase = getSupabaseClient();
+	if (supabase) {
+		try {
+			const { data: existingUser, error: lookupError } = await supabase
+				.from(RESUME_SYNC_TABLE)
+				.select("username")
+				.ilike("username", trimmedUsername.replace(/[\\%_]/g, "\\$&"))
+				.limit(1)
+				.maybeSingle();
+			if (lookupError) {
+				return {
+					ok: false,
+					error: "Unable to check your account with cloud storage. Please try again.",
+				};
+			}
+			if (existingUser) {
+				return {
+					ok: false,
+					error: "That username already exists. Sign in instead.",
+				};
+			}
+
+			const { error } = await supabase.from(RESUME_SYNC_TABLE).insert({
+				username: user.username,
+				sync_key: user.passwordHash,
+				resume_data: user.resumeData,
+				updated_at: new Date().toISOString(),
+			});
+			if (error) {
+				return {
+					ok: false,
+					error:
+						error.code === "23505"
+							? "That username already exists. Sign in instead."
+							: "Unable to create your account in cloud storage. Please try again.",
+				};
+			}
+		} catch {
+			return {
+				ok: false,
+				error: "Unable to reach cloud storage. Check your connection and try again.",
+			};
+		}
+	}
+
+	try {
+		writeUsers({ ...readUsers(), [key]: user });
+	} catch {
+		return {
+			ok: false,
+			error: supabase
+				? "Your cloud account was created, but browser storage is unavailable. Allow site storage, then sign in."
+				: "Browser storage is unavailable. Allow site storage and try again.",
+		};
+	}
 
 	return { ok: true, user: sanitizeUser(user) };
 }
@@ -52,16 +109,52 @@ export async function authenticateUser(username, password) {
 	const users = readUsers();
 	const key = getUserKey(trimmedUsername);
 	const user = users[key];
-	if (!user) {
-		return { ok: false, error: "User not found." };
-	}
-
 	const passwordHash = await hashPassword(password);
-	if (user.passwordHash !== passwordHash) {
-		return { ok: false, error: "Incorrect password." };
+	if (user?.passwordHash === passwordHash) {
+		return { ok: true, user: sanitizeUser(user) };
 	}
 
-	return { ok: true, user: sanitizeUser(user) };
+	if (!getSupabaseClient()) {
+		return {
+			ok: false,
+			error: user
+				? "Incorrect username or password."
+				: "This account is not saved in this browser, and cloud sign-in is not configured.",
+		};
+	}
+
+	const cloudResult = await downloadResumeFromSupabase({
+		username: trimmedUsername,
+		syncKey: passwordHash,
+	});
+	if (!cloudResult.ok) {
+		return {
+			ok: false,
+			error: `Unable to verify your account with cloud storage. ${cloudResult.error}`,
+		};
+	}
+	if (!cloudResult.data) {
+		return {
+			ok: false,
+			error: "Username or password is incorrect, or this account has not been synced yet.",
+		};
+	}
+
+	const restoredUser = {
+		username: cloudResult.username ?? trimmedUsername,
+		passwordHash,
+		resumeData: cloudResult.data,
+	};
+	try {
+		writeUsers({ ...readUsers(), [key]: restoredUser });
+	} catch {
+		return {
+			ok: false,
+			error: "Browser storage is unavailable. Allow site storage and try again.",
+		};
+	}
+
+	return { ok: true, user: sanitizeUser(restoredUser) };
 }
 
 export function saveToLocalStorage(username, data) {
@@ -182,9 +275,11 @@ export async function downloadResumeFromSupabase({ username, syncKey }) {
 	try {
 		const { data: row, error } = await supabase
 			.from(RESUME_SYNC_TABLE)
-			.select("resume_data, updated_at")
-			.eq("username", normalizedUsername)
+			.select("username, resume_data, updated_at")
+			.ilike("username", normalizedUsername.replace(/[\\%_]/g, "\\$&"))
 			.eq("sync_key", syncKey)
+			.order("updated_at", { ascending: false })
+			.limit(1)
 			.maybeSingle();
 
 		if (error) {
@@ -196,6 +291,7 @@ export async function downloadResumeFromSupabase({ username, syncKey }) {
 
 		return {
 			ok: true,
+			username: row?.username ?? null,
 			data: row?.resume_data ?? null,
 			updatedAt: row?.updated_at ?? null,
 		};
@@ -257,7 +353,9 @@ function readLegacyResume() {
 
 async function hashPassword(password) {
 	if (!globalThis.crypto?.subtle) {
-		return `plain:${password}`;
+		throw new Error(
+			"Sign-in requires a secure connection. Use HTTPS or localhost.",
+		);
 	}
 
 	const bytes = new TextEncoder().encode(password);
