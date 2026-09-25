@@ -3,22 +3,17 @@ import {
 	Check,
 	ChevronDown,
 	CircleCheck,
-	CloudDownload,
-	CloudUpload,
 	Code2,
 	Columns2,
 	FileJson,
-	FilePlus2,
 	FileText,
 	FolderOpen,
 	Loader2,
-	LogOut,
 	Minus,
 	Plus,
 	RotateCcw,
 	Sparkles,
 	TriangleAlert,
-	Upload,
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -88,7 +83,6 @@ function ActionMenu({ label, trigger, children, className = "" }) {
 }
 
 export function Toolbar({
-	currentUsername,
 	resumeTitle,
 	viewMode,
 	onViewChange,
@@ -96,9 +90,6 @@ export function Toolbar({
 	onFontSizeStep,
 	isParsing,
 	hasError,
-	syncMessage,
-	syncBusy,
-	onDismissMessage,
 	presets,
 	selectedPreset,
 	onPresetChange,
@@ -110,15 +101,9 @@ export function Toolbar({
 	onMarginChange,
 	onExportPdf,
 	onExportJson,
-	onDownloadStarter,
 	onCopyPrompt,
-	onImportFile,
-	onUploadSync,
-	onDownloadSync,
 	onReset,
-	onSignOut,
 }) {
-	const fileInputRef = useRef(null);
 	const [copied, setCopied] = useState(false);
 	const [actionError, setActionError] = useState(null);
 	const exportBlocked = isParsing || hasError;
@@ -140,18 +125,6 @@ export function Toolbar({
 			setActionError(null);
 		} catch {
 			setActionError("Clipboard access is unavailable.");
-		}
-	};
-
-	const handleFileChange = async (event) => {
-		const file = event.target.files?.[0];
-		event.target.value = "";
-		if (!file) return;
-		try {
-			onImportFile(await file.text());
-			setActionError(null);
-		} catch {
-			setActionError("The selected file could not be read.");
 		}
 	};
 
@@ -190,7 +163,7 @@ export function Toolbar({
 							? "Updating preview"
 							: hasError
 								? "JSON needs attention"
-								: "Local draft"}
+								: "Saved in this browser"}
 					</span>
 				</div>
 				<div className="header-actions">
@@ -217,27 +190,6 @@ export function Toolbar({
 						<ArrowDownToLine size={16} aria-hidden="true" />
 						Export PDF
 					</button>
-					<ActionMenu
-						label={`Account: ${currentUsername}`}
-						className="account-menu"
-						trigger={
-							<>
-								<span className="account-avatar">
-									{Array.from(currentUsername ?? "")
-										.slice(0, 2)
-										.join("")
-										.toUpperCase()}
-								</span>
-								<ChevronDown size={13} aria-hidden="true" />
-							</>
-						}
-					>
-						<div className="menu-caption">{currentUsername}</div>
-						<button type="button" onClick={onSignOut}>
-							<LogOut size={16} aria-hidden="true" />
-							Sign out
-						</button>
-					</ActionMenu>
 				</div>
 			</header>
 			<div className="workspace-toolbar no-print">
@@ -254,22 +206,11 @@ export function Toolbar({
 				>
 					<button
 						type="button"
-						onClick={() => fileInputRef.current?.click()}
-					>
-						<Upload size={16} aria-hidden="true" />
-						Import JSON
-					</button>
-					<button
-						type="button"
 						onClick={onExportJson}
 						disabled={exportBlocked}
 					>
 						<FileJson size={16} aria-hidden="true" />
 						Export JSON
-					</button>
-					<button type="button" onClick={onDownloadStarter}>
-						<FilePlus2 size={16} aria-hidden="true" />
-						Starter JSON
 					</button>
 					<hr />
 					<button
@@ -394,47 +335,18 @@ export function Toolbar({
 						</button>
 					))}
 				</div>
-				<div
-					className="cloud-actions"
-					role="group"
-					aria-label="Cloud sync"
-				>
-					<IconButton
-						icon={CloudDownload}
-						label="Download cloud copy"
-						onClick={onDownloadSync}
-						disabled={syncBusy}
-					/>
-					<IconButton
-						icon={CloudUpload}
-						label="Upload cloud copy"
-						onClick={onUploadSync}
-						disabled={syncBusy || exportBlocked}
-						align="end"
-					/>
-				</div>
 			</div>
-			{(actionError || syncMessage) && (
+			{actionError && (
 				<div className="workspace-notice no-print" role="status">
-					<span>{actionError || syncMessage}</span>
+					<span>{actionError}</span>
 					<IconButton
 						icon={X}
 						label="Dismiss status"
-						onClick={() => {
-							setActionError(null);
-							onDismissMessage?.();
-						}}
+						onClick={() => setActionError(null)}
 						align="end"
 					/>
 				</div>
 			)}
-			<input
-				ref={fileInputRef}
-				type="file"
-				accept="application/json,.json"
-				onChange={handleFileChange}
-				hidden
-			/>
 		</>
 	);
 }

@@ -1,13 +1,14 @@
 {
 	"name": "purpleresume",
 	"private": true,
-	"version": "4.0.0",
+	"version": "1.0.0",
 	"type": "module",
+	"author": "purplevarun",
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",
 		"lint": "eslint .",
-		"test": "node --experimental-test-module-mocks --test",
+		"test": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.js\" --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 \"src/**/*.test.js\"",
 		"preview": "vite preview",
 		"format": "prettier --write .",
 		"clean": "rm -rf dist node_modules && bun install && bun run format"
@@ -16,7 +17,6 @@
 		"@codemirror/commands": "^6.11.0",
 		"@codemirror/lang-json": "^6.0.2",
 		"@codemirror/search": "^6.7.2",
-		"@supabase/supabase-js": "^2.112.4",
 		"@uiw/react-codemirror": "^4.25.11",
 		"lucide-react": "^1.45.0",
 		"react": "^19.2.6",
