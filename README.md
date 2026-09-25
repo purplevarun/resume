@@ -6,8 +6,8 @@ The JSON is still the main interface. The formatting controls update `settings.p
 
 ## The workflow this is actually built for
 
-1. Find a job description you want to apply to.
-2. Open **File > Starter JSON** (first time) or **File > Export JSON** (if you already have a resume going) to grab your resume as JSON.
+1. Open the site. The starter resume JSON loads by default (or your last saved draft, restored from this browser).
+2. Find a job description you want to apply to.
 3. Click **Copy prompt** to copy a ready-made prompt with your JSON already included. Paste it into ChatGPT (or any LLM), then paste the job description where the prompt asks for it.
 4. Paste whatever comes back into the JSON editor here. The preview updates as you type.
 5. Click **Export PDF**. Your browser's print dialog opens; choose "Save as PDF."
@@ -22,49 +22,9 @@ That's the whole loop. Every field on the page — fonts, presets, margins, sect
 - The page meter measures used printable space. An overflowing resume is flagged separately from JSON syntax errors.
 - Export waits for the latest edit to finish parsing and is disabled for invalid JSON. Printing includes only the resume, even from Source-only view.
 
-## Local autosave + explicit cloud sync
+## Local autosave
 
-PurpleResume now uses two separate persistence layers:
-
-1. Local edits autosave into browser localStorage (per username) as you type.
-2. Cloud sync is manual, using the toolbar buttons:
-3. **Upload cloud copy** writes your current browser JSON to Supabase.
-4. **Download cloud copy** asks for confirmation before replacing your browser draft with the current Supabase JSON.
-
-This keeps editing snappy/offline-friendly while giving you intentional, explicit sync control.
-
-### Sign-in and account recovery
-
-Choose **Sign in** or **Create account** explicitly. Usernames ignore surrounding whitespace and letter case, including when recovering older mixed-case cloud records.
-
-When Supabase is configured, signup checks for an existing cloud username and saves the new account's initial resume before reporting success. Later resume edits still require **Upload cloud copy**. Sign-in keeps a matching local draft available offline; if the account is not cached in this browser, it verifies the username and password-derived sync key against Supabase and restores the saved resume.
-
-Older accounts created only in browser storage must use **Upload cloud copy** from their original browser once before they can be recovered elsewhere. Without Supabase configuration, accounts remain browser-local. Network and storage failures are reported separately from invalid credentials.
-
-This retains the existing password-derived sync-key scheme, not Supabase Auth. Client-side query filters are not an authorization boundary; production deployments need appropriate server-side access controls.
-
-To make local, dev, and prod all use the same Supabase database, set the same env values in every environment:
-
-```bash
-VITE_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_PUBLIC_SUPABASE_ANON_KEY=<anon-public-key>
-```
-
-### Supabase table setup
-
-Create this table once in your Supabase SQL editor:
-
-```sql
-create table if not exists public.resume_sync (
-	username text not null,
-	sync_key text not null,
-	resume_data jsonb not null,
-	updated_at timestamptz not null default now(),
-	primary key (username, sync_key)
-);
-```
-
-Then add RLS policies that match your org's security model.
+There are no accounts and no cloud sync. Edits autosave into browser localStorage as you type, and the saved draft is restored the next time you open the site in the same browser. **File > Reset resume** clears the draft and restores the starter template. Use **File > Export JSON** to keep a portable copy of your resume.
 
 ## Why this is built the way it is
 
@@ -147,22 +107,28 @@ The source footer tracks JSON validity; the preview footer tracks printed page f
 
 ## Getting started
 
+All project commands go through the `./run` script (which uses bun if available, otherwise npm):
+
 ```bash
-npm install
-npm run dev      # local dev server
-npm run build    # production build to dist/
-npm test         # authentication regression tests (Node 22.13+)
+bun install      # or: npm install
+./run dev        # local dev server
+./run test       # eslint + tests with enforced 100% coverage (Node 22.13+)
+./run format     # prettier
 ```
 
-If you run locally, add a `.env.local` file in the project root with `VITE_PUBLIC_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_ANON_KEY`.
+No environment variables are required.
+
+## Deployment
+
+The site deploys to GitHub Pages at `https://purplevarun.github.io/resume/`. Pushing to `main` triggers `.github/workflows/deploy.yml`, which installs with bun, runs lint and tests, builds with Vite (`base: "/resume/"`), and publishes `dist/` to Pages. One-time setup in the GitHub repo: **Settings > Pages > Source: GitHub Actions**.
 
 ## Project structure
 
 ```
 src/
-	App.jsx                     — top-level shell: state, local autosave, sync actions
+	App.jsx                     — top-level shell: state, local autosave
 	components/
-		Toolbar.jsx               — sync/import/export/starter/prompt actions
+		Toolbar.jsx               — export/prompt/reset actions + formatting controls
 		JsonEditor.jsx            — CodeMirror pane + validation status
 		ResumePreview.jsx         — the actual resume renderer
 	data/
@@ -173,8 +139,7 @@ src/
 	lib/
 		normalize.js              — defensive shape-checking; the actual safety net
 		markdown.jsx              — **bold** / *italic* / [link](url) parsing
-		storage.js                — local/cloud account recovery + storage + sync helpers
-		supabase.js               — shared Supabase client
+		storage.js                — localStorage draft persistence
 		download.js, id.js
 	index.css                   — app chrome + resume document styles + print rules
 ```
