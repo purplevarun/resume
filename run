@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Project command entry point.
+#   ./run test    — lint + unit tests
+#   ./run dev     — local dev server
+#   ./run format  — prettier
+set -euo pipefail
+cd "$(dirname "$0")"
+
+runner() {
+	if command -v bun >/dev/null 2>&1; then
+		bun run "$1"
+	else
+		npm run "$1"
+	fi
+}
+
+case "${1:-}" in
+	test)
+		runner lint
+		runner test
+		;;
+	dev)
+		runner dev
+		;;
+	format)
+		runner format
+		;;
+	*)
+		echo "Usage: ./run {test|dev|format}" >&2
+		exit 1
+		;;
+esac
