@@ -1,7 +1,6 @@
 node_modules/
 .idea/
 dist/
-.env
-.env.*
-!.env.example
-.vercel/
+bun.lock
+package-lock.json
+yarn.lock
